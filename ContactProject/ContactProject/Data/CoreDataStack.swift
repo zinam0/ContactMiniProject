@@ -61,6 +61,11 @@ extension CoreDataStack {
       }
     }
     
+    func deleteContact(contact: Contact) {
+        context?.delete(contact)
+        saveContext()
+    }
+    
     func saveContactData(contact: Contact) throws {
         guard let context = context else {
             throw CoreDataError.contextError("Failed to retrieve context")
