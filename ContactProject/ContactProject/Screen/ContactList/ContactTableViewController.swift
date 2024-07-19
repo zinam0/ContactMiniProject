@@ -8,7 +8,7 @@
 import UIKit
 import CoreData
 
-class ContactTableViewController: UITableViewController {
+class ContactTableViewController: UITableViewController, UITableViewDragDelegate, UITableViewDropDelegate {
     
     let coreData = CoreDataStack.shared
     var contactInfos: [Contact] = [] {
@@ -47,6 +47,9 @@ class ContactTableViewController: UITableViewController {
         self.tableView.register(ContactTableViewCell.self, forCellReuseIdentifier: ContactTableViewCell.identifier)
         self.tableView.delegate = self
         self.tableView.dataSource = self
+        self.tableView.dragDelegate = self
+        self.tableView.dropDelegate = self
+        self.tableView.dragInteractionEnabled = true
     }
     
     
@@ -78,7 +81,7 @@ class ContactTableViewController: UITableViewController {
     }
     
     override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        return 80 
+        return 80
     }
     
     // MARK: - Table view data source
@@ -107,42 +110,75 @@ class ContactTableViewController: UITableViewController {
     }
     
     
-     //Override to support conditional editing of the table view.
-        override func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
-            // Return false if you do not want the specified item to be editable.
-            return true
+    //Override to support conditional editing of the table view.
+    override func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
+        // Return false if you do not want the specified item to be editable.
+        //return false - 수정 및 삭제가 불가능함
+        return true
+    }
+    
+    // Override to support editing the table view.
+    override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
+        if editingStyle == .delete {
+            // Delete the row from the data source
+            
+            let contactToDelete = contactInfos[indexPath.row]
+            contactInfos.remove(at: indexPath.row)
+            coreData.deleteContact(contact: contactToDelete)
+            
+            tableView.deleteRows(at: [indexPath], with: .fade)
         }
+    }
     
+    // Override to support rearranging the table view.
+    override func tableView(_ tableView: UITableView, moveRowAt fromIndexPath: IndexPath, to: IndexPath) {
+        let movedContact = contactInfos.remove(at: fromIndexPath.row)
+        contactInfos.insert(movedContact, at:  to.row)
+    }
+    //Override to support conditional rearranging of the table view.
     
-    
-        // Override to support editing the table view.
-        override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
-            if editingStyle == .delete {
-                // Delete the row from the data source
-                
-                let contactToDelete = contactInfos[indexPath.row]
-                contactInfos.remove(at: indexPath.row)
-                coreData.deleteContact(contact: contactToDelete)
-                
-                tableView.deleteRows(at: [indexPath], with: .fade)
-            }
+    override func tableView(_ tableView: UITableView, canMoveRowAt indexPath: IndexPath) -> Bool {
+        //Return false if you do not want the item to be re-orderable.
+        return true
+    }
+    //드래그 시작될 때 호출되는 함수
+    func tableView(_ tableView: UITableView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
+        let contact = contactInfos[indexPath.row]
+        if let name = contact.name {
+            let itemProvider = NSItemProvider(object: contact.name! as NSString)
+            let dragItem = UIDragItem(itemProvider: itemProvider)
+            dragItem.localObject = contact
+            return [dragItem]
         }
+        return [UIDragItem]()
+    }
     
+    //드롭이 수행될 떄 호출
+    func tableView(_ tableView: UITableView, performDropWith coordinator: UITableViewDropCoordinator) {
+        guard coordinator.proposal.operation == .move,
+              let item = coordinator.items.first,
+              let sourceIndexPath = item.sourceIndexPath else { return }
+        
+        let destinationIndexPath = coordinator.destinationIndexPath ?? IndexPath(row: contactInfos.count - 1, section: 0)
+        
+        tableView.performBatchUpdates({
+            let movedContact = contactInfos.remove(at: sourceIndexPath.row)
+            contactInfos.insert(movedContact, at: destinationIndexPath.row)
+            tableView.moveRow(at: sourceIndexPath, to: destinationIndexPath)
+        }, completion: nil)
+        
+        coordinator.drop(item.dragItem, toRowAt: destinationIndexPath)
+    }
     
-    /*
-     // Override to support rearranging the table view.
-     override func tableView(_ tableView: UITableView, moveRowAt fromIndexPath: IndexPath, to: IndexPath) {
-     
-     }
-     */
+    //드롭 세션 처리할 수 있는지 확인 유무
+    func tableView(_ tableView: UITableView, canHandle session: UIDropSession) -> Bool {
+        return session.canLoadObjects(ofClass: NSString.self)
+    }
     
-    /*
-     // Override to support conditional rearranging of the table view.
-     override func tableView(_ tableView: UITableView, canMoveRowAt indexPath: IndexPath) -> Bool {
-     // Return false if you do not want the item to be re-orderable.
-     return true
-     }
-     */
+    //드롭 세션 업데이트될 때 호출
+    func tableView(_ tableView: UITableView, dropSessionDidUpdate session: UIDropSession, withDestinationIndexPath destinationIndexPath: IndexPath?) -> UITableViewDropProposal {
+        return UITableViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
+    }
     
     /*
      // MARK: - Navigation
